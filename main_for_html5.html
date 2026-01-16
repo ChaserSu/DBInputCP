@@ -44,7 +44,7 @@
 
         textarea {
             width: 100%;
-            height: 300px;
+            height: 220px;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
@@ -82,9 +82,13 @@
     <div class="top-bar">
         <div class="clipboard-label" id="clipboardLabel">剪贴板内容：空</div>
         <button class="clear-clipboard-btn" onclick="clearClipboard()">清空剪贴板</button>
+        <!-- 换行 -->
+        <div style="width: 100%;"></div>
+        <button class="clear-clipboard-btn" style="background: #2a9d8f;" onclick="pasteFromClipboard()">粘贴到输入框</button>
+        <button class="clear-clipboard-btn" style="background: #2a9d8f;" onclick="filterOnlyLinks()">过滤仅留链接</button>
     </div>
     <!-- 绑定回车事件 -->
-    <textarea id="content" placeholder="请输入要处理的内容（支持多行）" onkeydown="handleEnter(event)"></textarea>
+    <textarea id="content" placeholder="请输入要处理的内容（输入法按下换行键后执行【写入并清空】，如需换行请手动按下【换行】）" onkeydown="handleEnter(event)"></textarea>
     <div class="tip" id="tip"></div>
     <div class="button-group">
         <button style="background: #457b9d;" onclick="writeToClipboard()">写入</button>
@@ -150,12 +154,75 @@
                     const text = plus.android.invoke(textObj, "toString") || "空";
                     const displayContent = text.length > 20 ? text.substring(0, 20) + "..." : text;
                     document.getElementById('clipboardLabel').textContent = `剪贴板内容：${displayContent}`;
+                    return text;
                 } else {
                     document.getElementById('clipboardLabel').textContent = "剪贴板内容：空";
+                    return "";
                 }
             } catch (err) {
                 console.error("获取剪贴板失败：", err);
                 showTip("获取剪贴板失败", false);
+                return "";
+            }
+        }
+
+        // --- 从剪贴板粘贴到输入框 ---
+        function pasteFromClipboard() {
+            // 检查5+环境和剪贴板对象
+            if (!plusReady || !androidClipboard) {
+                showTip("请在5+ App环境中运行", false);
+                return;
+            }
+
+            try {
+                plus.android.importClass(androidClipboard);
+                // 获取剪贴板主内容
+                const clip = androidClipboard.getPrimaryClip();
+                if (clip != null && clip.getItemCount() > 0) {
+                    // 读取剪贴板文本内容
+                    const textObj = clip.getItemAt(0).getText();
+                    const text = plus.android.invoke(textObj, "toString") || "";
+                    if (text) {
+                        // 将内容粘贴到输入框
+                        document.getElementById('content').value = text;
+                        showTip("✓ 已从剪贴板粘贴", true);
+                    } else {
+                        showTip("剪贴板为空", false);
+                    }
+                } else {
+                    showTip("剪贴板为空", false);
+                }
+            } catch (err) {
+                console.error("粘贴失败：", err);
+                showTip("粘贴失败", false);
+            }
+        }
+
+        // --- 过滤仅留链接 ---
+        function filterOnlyLinks() {
+            const contentEle = document.getElementById('content');
+            let content = contentEle.value;
+            if (!content) {
+                showTip('输入框为空', false);
+                return;
+            }
+            
+            try {
+                // 使用正则表达式匹配所有http/https链接
+                const linkRegex = /https?:\/\/[^\s]+/g;
+                const links = content.match(linkRegex) || [];
+                
+                if (links.length > 0) {
+                    // 将匹配到的链接用换行符连接
+                    const filteredContent = links.join('\n');
+                    contentEle.value = filteredContent;
+                    showTip(`✓ 已过滤出 ${links.length} 个链接`, true);
+                } else {
+                    showTip('未找到链接', false);
+                }
+            } catch (err) {
+                console.error("过滤链接失败：", err);
+                showTip("过滤链接失败", false);
             }
         }
 
@@ -307,7 +374,7 @@
         // 页面加载时检查环境
         window.onload = function() {
             if (!plusReady) {
-                showTip("请在5+ App中运行本工具", false);
+                showTip("启动成功", false);
             }
         };
     </script>
