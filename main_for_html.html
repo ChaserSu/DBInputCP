@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>剪贴板历史工具（纯网页版）</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            padding: 20px;
+            font-family: sans-serif;
+            background: #fff;
+        }
+
+        .top-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .clipboard-label {
+            flex: 1;
+            font-size: 14px;
+            color: #333;
+            min-width: 200px;
+        }
+
+        .clear-clipboard-btn {
+            padding: 8px 16px;
+            background: #e63946;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        textarea {
+            width: 100%;
+            height: 300px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            resize: none;
+        }
+
+        .tip {
+            height: 30px;
+            line-height: 30px;
+            text-align: center;
+            color: #2a9d8f;
+            margin-bottom: 15px;
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        button {
+            padding: 12px 0;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        /* 适配手机小屏 */
+        @media (max-width: 500px) {
+            .button-group {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="top-bar">
+        <div class="clipboard-label" id="clipboardLabel">剪贴板内容：空</div>
+        <button class="clear-clipboard-btn" onclick="clearClipboard()">清空剪贴板</button>
+    </div>
+    <textarea id="content" placeholder="请输入要处理的内容（支持多行）"></textarea>
+    <div class="tip" id="tip"></div>
+    <div class="button-group">
+        <button style="background: #457b9d;" onclick="writeToClipboard()">写入</button>
+        <button style="background: #7209b7;" onclick="writeAndClear()">写入并清空</button>
+        <button style="background: #e63946;" onclick="clearOnly()">清空</button>
+        <button style="background: #2a9d8f;" onclick="restorePrev()">恢复上一条</button>
+        <button style="background: #f4a261;" onclick="restoreNext()">恢复下一条</button>
+        <button style="background: #6c757d;" onclick="clearHistory()">清空历史</button>
+    </div>
+
+    <script>
+        // 内存存储历史记录（重启页面丢失，无持久化）
+        let history_stack = [];
+        let history_index = -1;
+
+        // 显示提示
+        function showTip(text, isSuccess = true) {
+            const tip = document.getElementById('tip');
+            tip.style.color = isSuccess ? '#2a9d8f' : '#e63946';
+            tip.textContent = text;
+            setTimeout(() => tip.textContent = '', 3000);
+        }
+
+        // --- 核心：浏览器 Clipboard API 实现剪贴板读写 ---
+        // 获取剪贴板内容
+        async function getClipboard() {
+            try {
+                // 浏览器需要用户授权
+                const text = await navigator.clipboard.readText();
+                const displayContent = text.length > 20 ? text.substring(0, 20) + "..." : text || "空";
+                document.getElementById('clipboardLabel').textContent = `剪贴板内容：${displayContent}`;
+            } catch (err) {
+                showTip("获取剪贴板失败，请允许权限", false);
+            }
+        }
+
+        // 清空剪贴板（写入空字符串）
+        async function clearClipboard() {
+            try {
+                await navigator.clipboard.writeText("");
+                showTip("✓ 剪贴板已清空");
+                getClipboard();
+            } catch (err) {
+                showTip("清空剪贴板失败", false);
+            }
+        }
+
+        // 写入剪贴板
+        async function writeToClipboard() {
+            const content = document.getElementById('content').value.trim();
+            if (!content) {
+                showTip('输入框为空', false);
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(content);
+                history_stack.push(content);
+                history_index = history_stack.length - 1;
+                showTip(`✓ 已写入（共 ${history_stack.length} 条）`);
+                getClipboard();
+            } catch (err) {
+                showTip("写入剪贴板失败，请允许权限", false);
+            }
+        }
+
+        // 写入并清空输入框
+        async function writeAndClear() {
+            const content = document.getElementById('content').value.trim();
+            if (!content) {
+                showTip('输入框为空', false);
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(content);
+                history_stack.push(content);
+                history_index = history_stack.length - 1;
+                document.getElementById('content').value = '';
+                showTip(`✓ 已写入并清空（共 ${history_stack.length} 条）`);
+                getClipboard();
+            } catch (err) {
+                showTip("写入剪贴板失败", false);
+            }
+        }
+
+        // 仅清空输入框
+        function clearOnly() {
+            const content = document.getElementById('content').value.trim();
+            if (!content) {
+                showTip('输入框已空', false);
+                return;
+            }
+            history_stack.push(content);
+            history_index = history_stack.length - 1;
+            document.getElementById('content').value = '';
+            showTip(`✓ 已清空输入框（共 ${history_stack.length} 条）`);
+        }
+
+        // 恢复上一条
+        function restorePrev() {
+            if (!history_stack.length) {
+                showTip("暂无历史记录", false);
+                return;
+            }
+            if (history_index > 0) {
+                history_index -= 1;
+                document.getElementById('content').value = history_stack[history_index];
+                showTip(`已恢复上一条（${history_index + 1}/${history_stack.length}）`);
+            } else {
+                showTip("已是第一条记录", false);
+            }
+        }
+
+        // 恢复下一条
+        function restoreNext() {
+            if (!history_stack.length) {
+                showTip("暂无历史记录", false);
+                return;
+            }
+            if (history_index < history_stack.length - 1) {
+                history_index += 1;
+                document.getElementById('content').value = history_stack[history_index];
+                showTip(`已恢复下一条（${history_index + 1}/${history_stack.length}）`);
+            } else {
+                showTip("已是最后一条记录", false);
+            }
+        }
+
+        // 清空历史
+        function clearHistory() {
+            history_stack = [];
+            history_index = -1;
+            showTip("✓ 历史记录已清空");
+        }
+
+        // 页面加载时获取剪贴板
+        window.onload = getClipboard;
+    </script>
+</body>
+
+</html>
